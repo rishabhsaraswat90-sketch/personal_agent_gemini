@@ -27,12 +27,10 @@ def main():
     """
     Main function to configure and run the agent server.
     """
-    print(f"[DEBUG] Server is watching for file at: {IPC_FILE}")
     
     # Find the .env file in the script's directory
     load_dotenv(dotenv_path=SCRIPT_DIR / ".env")
     api_key = os.getenv("GEMINI_API_KEY")
-    print(f"[DEBUG] API Key found in .env: {api_key is not None}")
     if not api_key:
         print("Error: GEMINI_API_KEY not found in .env file.")
         return

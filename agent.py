@@ -22,7 +22,6 @@ def main():
     Parses user's command, writes it to a file, waits for a response
     file, and prints the response.
     """
-    print(f"[DEBUG] Client is writing file to: {IPC_FILE}")
     parser = argparse.ArgumentParser(
         description="Ask the AI agent a question. \n"
                     "Example: python ask.py \"What's this error?\" --model pro",
