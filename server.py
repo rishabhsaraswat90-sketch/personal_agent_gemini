@@ -5,30 +5,19 @@ import google.generativeai as genai
 import pyautogui
 from dotenv import load_dotenv
 from rich.console import Console
-import pathlib 
+import pathlib
 
-# --- NEW: DEFINE ABSOLUTE PATHS ---
-# Gets the full path to the directory this script (agent_server.py) is in
+# --- DEFINE ABSOLUTE PATHS ---
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
-
-# Define the full, absolute paths for our "mailbox" files
 IPC_FILE = SCRIPT_DIR / "prompt.json"
 RESPONSE_FILE = SCRIPT_DIR / "response.json"
-# ----------------------------------
 
-
-# Maps our friendly names to the full Google API names
 MODEL_MAP = {
     "flash": "gemini-2.5-flash",
     "pro": "gemini-2.5-pro"
 }
 
 def main():
-    """
-    Main function to configure and run the agent server.
-    """
-    
-    # Find the .env file in the script's directory
     load_dotenv(dotenv_path=SCRIPT_DIR / ".env")
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -75,29 +64,38 @@ def main():
                         console.print("  > Action: PRO request. Taking screenshot in 5 SECONDS...", style="magenta")
                         console.print("  > QUICK! SWITCH TO THE WINDOW YOU WANT TO CAPTURE!", style="bold red")
                         time.sleep(5)
-                        console.print("  > Action: Taking screenshot...", style="magenta")
                         image = pyautogui.screenshot()
+                        console.print("  > Screenshot captured!", style="magenta")
                         payload = [prompt, image]
                     else: # 'flash'
                         console.print("  > Action: Text-only request.", style="magenta")
                         payload = [prompt]
 
-                    # --- 2. MODIFIED: We are REMOVING the stream ---
-                    console.print("  > Calling API (this may take a moment)...", style="yellow")
+                    console.print("  > Calling API and streaming response...", style="yellow")
                     
-                    # We are now making a single, blocking call
-                    response = model.generate_content(payload)
+                    # --- THE FIX: Use stream=True and collect the response ---
+                    response = model.generate_content(payload, stream=True)
                     
-                    # --- 3. NEW: Write the answer to the response file ---
-                    response_data = {"response": response.text}
+                    full_response_text = ""
+                    for chunk in response:
+                        full_response_text += chunk.text
+                    # --------------------------------------------------------
+                    
+                    # --- SUCCESS RESPONSE ---
+                    response_data = {"response": full_response_text, "error": False}
                     with open(RESPONSE_FILE, 'w') as f:
                         json.dump(response_data, f)
                     
                     console.print(f"\n...Response written to {RESPONSE_FILE}.", style="bold green")
-                    # -------------------------------------------------
 
                 except Exception as e:
                     console.print(f"\n[!] Error processing request: {e}", style="bold red")
+                    
+                    error_message = f"An error occurred on the server:\n\n{e}"
+                    response_data = {"response": error_message, "error": True}
+                    with open(RESPONSE_FILE, 'w') as f:
+                        json.dump(response_data, f)
+                    
                     if os.path.exists(IPC_FILE):
                         os.remove(IPC_FILE)
                 
