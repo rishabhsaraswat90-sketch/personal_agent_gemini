@@ -6,6 +6,8 @@ import time
 from rich.console import Console
 from rich.markdown import Markdown
 import pathlib
+import tkinter
+from tkinter import filedialog
 
 # --- DEFINE ABSOLUTE PATHS ---
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
@@ -13,20 +15,36 @@ IPC_FILE = SCRIPT_DIR / "prompt.json"
 RESPONSE_FILE = SCRIPT_DIR / "response.json"
 
 def main():
+    """
+    Parses user's command, optionally opens a file dialog for a PDF,
+    writes the request to a file, waits for a response, and prints it.
+    """
     parser = argparse.ArgumentParser(
-        description="Ask the AI agent a question. \n"
-                    "Example: python ask.py \"What's this error?\" --model pro",
+        description="Ask the AI agent a question.",
         formatter_class=argparse.RawTextHelpFormatter
     )
     
+    parser.add_argument(
+        '--chat',
+        type=str,
+        default=None,
+        help="The name of the conversation to continue or start (e.g., 'project_ideas')."
+    )
+
     parser.add_argument(
         '--model',
         type=str,
         choices=['pro', 'flash'],
         default='flash',
-        help="Choose the model:\n"
+        help="Choose the model for one-off requests:\n"
              "  'pro'   = (Slower) Sends text + screenshot.\n"
              "  'flash' = (Faster) Sends text-only."
+    )
+    
+    parser.add_argument(
+        '--pdf',
+        action='store_true',
+        help="Open a file dialog to select a PDF for analysis."
     )
     
     parser.add_argument(
@@ -43,13 +61,32 @@ def main():
     args = parser.parse_args()
     prompt_text = " ".join(args.prompt)
     
+    console = Console()
+    pdf_path = None
+
+    if args.pdf:
+        console.print("[yellow]Please select a PDF file to analyze...[/yellow]")
+        root = tkinter.Tk()
+        root.withdraw()
+        
+        pdf_path = filedialog.askopenfilename(
+            title="Select a PDF to Analyze",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        )
+        
+        if not pdf_path:
+            console.print("[bold red]No file selected. Aborting.[/bold red]")
+            return
+        
+        console.print(f"[green]Selected file:[/green] {pdf_path}")
+    
     data = {
         "prompt": prompt_text,
-        "model": args.model
+        "model": args.model,
+        "pdf_path": pdf_path,
+        "chat_name": args.chat
     }
     
-    console = Console()
-
     if os.path.exists(RESPONSE_FILE):
         os.remove(RESPONSE_FILE)
 
@@ -60,9 +97,14 @@ def main():
         console.print(f"[!] Error writing prompt file: {e}", style="bold red")
         return
 
-    console.print(f"Sent to agent (Model: {args.model})... [bold yellow]Waiting for response...[/bold yellow]")
+    status_message = f"Sent to agent (Model: {args.model})"
+    if args.chat:
+        status_message += f" (Chat: {args.chat})"
+    status_message += "... [bold yellow]Waiting for response...[/bold yellow]"
     
-    timeout_seconds = 60
+    console.print(status_message)
+    
+    timeout_seconds = 180 # Increased timeout for very large PDFs
     start_time = time.time()
     
     while True:
@@ -78,19 +120,15 @@ def main():
                 
                 os.remove(RESPONSE_FILE)
                 
-                # --- NEW: CHECK IF THE RESPONSE IS AN ERROR ---
                 if response_data.get("error"):
                     console.print("\n[!] The Agent Server reported an error:", style="bold red")
-                    # Print the raw error text, not as Markdown
                     console.print(response_data.get("response"))
                 else:
-                    # This is the normal, successful path
                     console.print("\n--- Gemini's Answer ---")
                     response_text = response_data.get("response", "No response text found.")
                     md = Markdown(response_text)
                     console.print(md)
                     console.print("------------------------")
-                # ---------------------------------------------
                 
                 break
                 
