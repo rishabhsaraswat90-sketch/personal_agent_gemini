@@ -20,7 +20,6 @@ MODEL_MAP = {
     "pro": "gemini-2.5-pro"
 }
 
-# --- Helper functions for managing chat history ---
 def load_history():
     if HISTORY_FILE.exists():
         with open(HISTORY_FILE, 'r') as f:
@@ -63,7 +62,7 @@ def main():
                     
                     prompt = data.get("prompt")
                     short_model_name = data.get("model")
-                    pdf_path = data.get("pdf_path")
+                    media_path = data.get("media_path") # Renamed from pdf_path
                     chat_name = data.get("chat_name")
                     
                     if not prompt: prompt = "What is this?"
@@ -80,19 +79,16 @@ def main():
                         chat_object = all_chats.get(chat_name, {"file_name": None, "history": []})
                         history = chat_object.get("history", [])
                         
-                        # Use the user's selected model for the chat
-                        full_model_name = MODEL_MAP.get(short_model_name)
+                        # Media analysis in chat should also use the PRO model
+                        full_model_name = MODEL_MAP.get("pro") if media_path else MODEL_MAP.get(short_model_name)
                         model = genai.GenerativeModel(full_model_name, safety_settings=safety_settings)
                         console.print(f"  > Using model: {full_model_name}")
 
-                        # Start building the payload for the API
-                        # The payload must contain the full history for context
                         payload = history + [{"role": "user", "parts": [prompt]}]
                         
-                        # Check for a NEW file being added to the chat
-                        if pdf_path:
-                            console.print(f"  > Attaching PDF: '{pdf_path}'...", style="cyan")
-                            uploaded_file = genai.upload_file(path=pdf_path)
+                        if media_path:
+                            console.print(f"  > Attaching Media File: '{media_path}'...", style="cyan")
+                            uploaded_file = genai.upload_file(path=media_path)
                             chat_object["file_name"] = uploaded_file.name
                             payload[len(payload)-1]["parts"].append(uploaded_file)
                         elif short_model_name == 'pro':
@@ -107,18 +103,14 @@ def main():
                             payload[len(payload)-1]["parts"].append(uploaded_file)
                             os.remove(temp_path)
                             console.print(f"  > Screenshot uploaded and linked to chat.", style="dim")
-                        # Check for an EXISTING file in the chat history
                         elif chat_object.get("file_name"):
                             file_name = chat_object.get("file_name")
                             console.print(f"  > Re-attaching file from history: {file_name}", style="dim")
-                            # The file needs to be part of the context for the AI to see it
-                            # We insert it at the beginning of the payload
                             payload.insert(0, genai.get_file(name=file_name))
 
                         response = model.generate_content(payload)
                         full_response_text = response.text
                         
-                        # Update and save the text history
                         new_history_turn = {'role': 'user', 'parts': [prompt]}
                         history.append(new_history_turn)
                         history.append({'role': 'model', 'parts': [full_response_text]})
@@ -130,28 +122,25 @@ def main():
                         
                     else:
                         # --- ONE-OFF REQUEST LOGIC ---
-                        # (This logic is now simpler as it doesn't need to be duplicated)
-                        # ... (The old one-off logic is fine, but this is cleaner)
-                        full_model_name = MODEL_MAP.get(short_model_name)
-                        if pdf_path: full_model_name = MODEL_MAP.get("flash")
-
-                        console.print(f"  > Model: {short_model_name} (using {full_model_name})")
-                        model = genai.GenerativeModel(full_model_name, safety_settings=safety_settings)
-
                         payload = [prompt]
-                        if pdf_path:
-                            console.print(f"  > Action: PDF Analysis...", style="cyan")
-                            payload.append(genai.upload_file(path=pdf_path))
+                        if media_path:
+                            full_model_name = MODEL_MAP.get("pro")
+                            console.print(f"  > Action: Media File Analysis (using {full_model_name})...", style="cyan")
+                            payload.append(genai.upload_file(path=media_path))
                         elif short_model_name == 'pro':
+                            full_model_name = MODEL_MAP.get("pro")
                             console.print("  > Action: PRO screenshot...", style="magenta")
                             time.sleep(5)
                             payload.append(pyautogui.screenshot())
-                        
+                        else: # 'flash'
+                            full_model_name = MODEL_MAP.get("flash")
+                            console.print("  > Action: Text-only request.", style="magenta")
+
+                        model = genai.GenerativeModel(full_model_name, safety_settings=safety_settings)
                         response = model.generate_content(payload, stream=True)
                         for chunk in response:
                             full_response_text += chunk.text
 
-                    # --- Respond to Client ---
                     response_data = {"response": full_response_text, "error": False}
                     with open(RESPONSE_FILE, 'w') as f:
                         json.dump(response_data, f)

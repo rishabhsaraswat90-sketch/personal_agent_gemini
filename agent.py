@@ -16,7 +16,7 @@ RESPONSE_FILE = SCRIPT_DIR / "response.json"
 
 def main():
     """
-    Parses user's command, optionally opens a file dialog for a PDF,
+    Parses user's command, optionally opens a file dialog for any media,
     writes the request to a file, waits for a response, and prints it.
     """
     parser = argparse.ArgumentParser(
@@ -41,10 +41,11 @@ def main():
              "  'flash' = (Faster) Sends text-only."
     )
     
+    # --- RENAMED to --media ---
     parser.add_argument(
-        '--pdf',
+        '--media',
         action='store_true',
-        help="Open a file dialog to select a PDF for analysis."
+        help="Open a file dialog to select any media file for analysis (image, video, audio, etc.)."
     )
     
     parser.add_argument(
@@ -62,28 +63,30 @@ def main():
     prompt_text = " ".join(args.prompt)
     
     console = Console()
-    pdf_path = None
+    media_path = None
 
-    if args.pdf:
-        console.print("[yellow]Please select a PDF file to analyze...[/yellow]")
+    # --- UPDATED logic to handle the --media flag ---
+    if args.media:
+        console.print("[yellow]Please select a media file to analyze...[/yellow]")
         root = tkinter.Tk()
         root.withdraw()
         
-        pdf_path = filedialog.askopenfilename(
-            title="Select a PDF to Analyze",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        # Changed to allow all file types
+        media_path = filedialog.askopenfilename(
+            title="Select a Media File to Analyze",
+            filetypes=[("All files", "*.*")] 
         )
         
-        if not pdf_path:
+        if not media_path:
             console.print("[bold red]No file selected. Aborting.[/bold red]")
             return
         
-        console.print(f"[green]Selected file:[/green] {pdf_path}")
+        console.print(f"[green]Selected file:[/green] {media_path}")
     
     data = {
         "prompt": prompt_text,
         "model": args.model,
-        "pdf_path": pdf_path,
+        "media_path": media_path, # Renamed from pdf_path
         "chat_name": args.chat
     }
     
@@ -104,13 +107,13 @@ def main():
     
     console.print(status_message)
     
-    timeout_seconds = 180 # Increased timeout for very large PDFs
+    timeout_seconds = 300 # Increased timeout for potentially large media files
     start_time = time.time()
     
     while True:
         if time.time() - start_time > timeout_seconds:
             console.print("\n[!] Error: Timed out waiting for a response from the server.", style="bold red")
-            console.print("Is 'agent_server.py' running in another terminal?", style="yellow")
+            console.print("Is 'server.py' running in another terminal?", style="yellow")
             break
         
         if os.path.exists(RESPONSE_FILE):
